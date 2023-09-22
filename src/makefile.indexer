@@ -1,0 +1,10 @@
+# My first makefile
+ 
+all:asynchronousIndexing
+ 
+asynchronousIndexing: asynchronousIndexing.o
+	gcc asynchronousIndexing.c sds.c zmalloc.c -o asynchronousIndexing.o -Wall -ldb
+
+
+clean:
+	rm -rf *.o *~ asynchronousIndexing
