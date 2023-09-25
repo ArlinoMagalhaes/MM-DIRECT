@@ -140,7 +140,7 @@ The instant recovery can be enabled setting the instant recovery state field to 
 The default value of that field is ”ON”, i.e., MM-DIRECT runs instant recovery by default.
 
 ```bash
-instant_recovery_state = "ON"
+instant_recovery_state = "ON";
 ```
 
 If the value of instant recovery state is ”OFF”, the system will run the default
