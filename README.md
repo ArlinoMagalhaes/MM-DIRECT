@@ -26,7 +26,7 @@ Looking more closely at Figure 1, one may observe that the standard recovery app
 has downtime after a failure while the database is recovering. On the other hand, the
 instant recovery approach schedules transactions immediately after the system starts up
 during the recovery process.
-<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<div align="center" style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
 <img style="width: 500px;" src="./assets/graph-1.png"/>
 </div>
 
@@ -38,8 +38,8 @@ pletely to recover the database. The instant recovery uses an indexed log file (
 index structure (e.g., B+-tree or Hash table) that allows to restore tuples into memory in-
 crementally or on-demand. Section 11 shows some articles for more details about instant recovery approach.
 
-<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
-<img style="width: 70vw; height: auto;" src="assets/graph-2.jpg" />
+<div align="center" style="margin-top: 20px; margin-bottom: 20px;">
+<img style="width: 70vw; height: auto; display: flex; align-items: center;justify-content;" src="assets/graph-2.jpg" />
 </div>
 
 ### 2. How to install MM-DIRECT
@@ -90,7 +90,7 @@ Enter on ”MM-DIRECT/src” directory and run the command below:
 
 Figure 3 shows the Redis-IR database system running.
 
-<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<div align="center" style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
 <img style="height: 300px; width: auto;" src="./assets/graph-3.png" />
 </div>
 
@@ -498,7 +498,7 @@ Other graphics about other aspects of the MM-DIRECT recovery strategy can be gen
 erated, such as: latency, log file write bandwidth, and system usage. Figure 4 shows some
 graphics that can be generated using the available scripts in MM-DIRECT.
 
-<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<div align="center" style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
 <img style="width: 80vw; height: auto;" src="assets/graph-4.jpg" />
 </div>
 
