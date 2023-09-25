@@ -205,9 +205,7 @@ make
 sudo make install
 ```
 
-If some packages were not found during installation (e.g., libssl and zlib1g), try to
-install Memtier prerequisites again or install that packages separately. Access Memtier’s
-git for more information about the tool: https://github.com/RedisLabs/memtier_benchmark.
+ Access Memtier’s git for more information about the tool: https://github.com/RedisLabs/memtier_benchmark.
 
 ### 5.2. Using Memtier automatically on MM-DIRECT
 
