@@ -1,446 +1,555 @@
-This README is just a fast *quick start* document. You can find more detailed documentation at [redis.io](https://redis.io).
+# MM-DIRECT
 
-What is Redis?
---------------
+### 1. General Information
 
-Redis is often referred as a *data structures* server. What this means is that Redis provides access to mutable data structures via a set of commands, which are sent using a *server-client* model with TCP sockets and a simple protocol. So different processes can query and modify the same data structures in a shared way.
+Main Memory Databases (MMDBs) technology handles the primary database in Random
+Access Memory (RAM) to provide low latency and high throughput. However, volatile
+memory makes MMDBs much more sensitive to system failures (power cut, e.g.). The
+contents of the database are lost in these failures, and, as a result, systems may be unavail-
+able for a long time until the database recovery process has been finished. For example,
+after a failure, standard recovery of Redis database (similar to recovery implemented by
+most MMDBs) must recover the database completely in memory before performing new
+transactions.
 
-Data structures implemented into Redis have a few special properties:
+Novel recovery techniques are needed to repair crashed MMDBs as quickly as
+possible. MM-DIRECT is a fork of Redis that implements a instant recovery technique. The
+instant recovery technique enables MMDBs to schedule transactions simultaneously with
+the database recovery process at system startup. Thus, applications and users do not notice
+the recovery process, giving the impression that the system was instantly restored. Since
+the instant recovery approach schedules transactions as quickly as possible, it delivers
+higher IOPS rates, i.e., it is able to run workloads faster.
 
-* Redis cares to store them on disk, even if they are always served and modified into the server memory. This means that Redis is fast, but that is also non-volatile.
-* Implementation of data structures stress on memory efficiency, so data structures inside Redis will likely use less memory compared to the same data structure modeled using an high level programming language.
-* Redis offers a number of features that are natural to find in a database, like replication, tunable levels of durability, cluster, high availability.
+Figure 1 shows two recovery experiments: instant recovery implemented by
+MM Direct (blue line) and standard recovery implemented by most MMDBs (yellow line).
+The graphic lines represents the average transaction throughput over small time intervals.
+Looking more closely at Figure 1, one may observe that the standard recovery approach
+has downtime after a failure while the database is recovering. On the other hand, the
+instant recovery approach schedules transactions immediately after the system starts up
+during the recovery process.
+<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<img style="width: 500px;" src="./assets/graph-1.png"/>
+</div>
 
-Another good example is to think of Redis as a more complex version of memcached, where the operations are not just SETs and GETs, but operations to work with complex data types like Lists, Sets, ordered data structures, and so forth.
+**Figure 1. Transaction throughput during database recovery: Instant Recovery
+vs. Default Recovery**
 
-If you want to know more, this is a list of selected starting points:
+The default recovery needs to scan the sequential log file (Figure 2 (a)) com-
+pletely to recover the database. The instant recovery uses an indexed log file (Figure 2(b)) to recover a failed database instead of a sequential log file. The indexed log is an
+index structure (e.g., B+-tree or Hash table) that allows to restore tuples into memory in-
+crementally or on-demand. Section 11 shows some articles for more details about instant recovery approach.
 
-* Introduction to Redis data types. http://redis.io/topics/data-types-intro
-* Try Redis directly inside your browser. http://try.redis.io
-* The full list of Redis commands. http://redis.io/commands
-* There is much more inside the Redis official documentation. http://redis.io/documentation
+<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<img style="width: 70vw; height: auto;" src="assets/graph-2.jpg" />
+</div>
 
-Building Redis
---------------
+### 2. How to install MM-DIRECT
+MM-DIRECT can be builded on Ubuntu 20.04 or earlier. However, the prototype was tested
+only on Ubuntu 20.04, 18.04, and 16.04.
+The following libraries are required for building MM-DIRECT:
+1. `C++ compiler`
+2. `Libconfig` (libconfig-dev)
+3. `Berkely DB` (libdb-dev)
 
-Redis can be compiled and used on Linux, OSX, OpenBSD, NetBSD, FreeBSD.
-We support big endian and little endian architectures, and both 32 bit
-and 64 bit systems.
+### 2.1. Installing C++ compiler
 
-It may compile on Solaris derived systems (for instance SmartOS) but our
-support for this platform is *best effort* and Redis is not guaranteed to
-work as well as in Linux, OSX, and \*BSD there.
+```bash
+sudo apt install build-essential
+```
 
-It is as simple as:
+### 2.2. Installing Libconfig
 
-    % make
+```bash
+sudo apt-get update -y
+sudo apt install libconfig-dev
+```
 
-You can run a 32 bit Redis binary using:
+### 2.3. Installing Berkely DB
 
-    % make 32bit
+```bash
+sudo apt-get update
+sudo apt-get install libdb-dev
+```
 
-After building Redis, it is a good idea to test it using:
+### 2.4. Installing MM-DIRECT
 
-    % make test
+```bash
+git clone https://github.com/ArlinoMagalhaes/MM-DIRECT.git
+cd MM-DIRECT
+make
+```
 
-Fixing build problems with dependencies or cached build options
----------
+### 3. Using MM-DIRECT
 
-Redis has some dependencies which are included into the `deps` directory.
-`make` does not automatically rebuild dependencies even if something in
-the source code of dependencies changes.
+### 3.1. Running MM-Direct server
 
-When you update the source code with `git pull` or when code inside the
-dependencies tree is modified in any other way, make sure to use the following
-command in order to really clean everything and rebuild from scratch:
+Enter on ”MM-DIRECT/src” directory and run the command below:
+    
+```bash
+./redis-server
+```
 
-    make distclean
+Figure 3 shows the Redis-IR database system running.
 
-This will clean: jemalloc, lua, hiredis, linenoise.
+<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<img style="height: 300px; width: auto;" src="./assets/graph-3.png" />
+</div>
 
-Also if you force certain build options like 32bit target, no C compiler
-optimizations (for debugging purposes), and other similar build time options,
-those options are cached indefinitely until you issue a `make distclean`
-command.
+### 3.2. Typing commands
+Redis has a built-in client, called redis-cli (Redis command line interface), that allows
+to interact with the database system. The redis-cli is a terminal program used to send
+commands to and read replies from the Redis server. To use redis-cli, enter on ”MM-DIRECT/src” directory and run the command below:
+    
+```bash
+./redis-cli
+```
 
-Fixing problems building 32 bit binaries
----------
+The SET command inserts a key/value into the database. The command below
+inserts the key key1 with the value value1. Run the command in redis-cli.
 
-If after building Redis with a 32 bit target you need to rebuild it
-with a 64 bit target, or the other way around, you need to perform a
-`make distclean` in the root directory of the Redis distribution.
+```bash
+set key1 value1
+```
 
-In case of build errors when trying to build a 32 bit binary of Redis, try
-the following steps:
+The GET command retrieves a value from the database using a key. The command
+below gets the value value1 using the key key1. Run the command in redis-cli.
 
-* Install the packages libc6-dev-i386 (also try g++-multilib).
-* Try using the following command line instead of `make 32bit`:
-  `make CFLAGS="-m32 -march=native" LDFLAGS="-m32"`
+```bash
+get key1
+```
 
-Allocator
----------
+### 3.3. Shuting down and restarting the server
 
-Selecting a non-default memory allocator when building Redis is done by setting
-the `MALLOC` environment variable. Redis is compiled and linked against libc
-malloc by default, with the exception of jemalloc being the default on Linux
-systems. This default was picked because jemalloc has proven to have fewer
-fragmentation problems than libc malloc.
+Try to shout down the database system and run it again to observe the instant recovery.
+Use the following command on redis-cli to shout down the database system:
 
-To force compiling against libc malloc, use:
+```bash	
+shutdown
+```
 
-    % make MALLOC=libc
+Large log files are required to better observe the instant recovery process. Thus,
+it is necessary to put the system into production to generate large log files. Section 6.1
+show how to generate a database using a benchmark tool.
 
-To compile against jemalloc on Mac OS X systems, use:
+### 4. Configuring MM Direct
 
-    % make MALLOC=jemalloc
+The MM-DIRECT settings are stored in the **redis_ir.conf** file in the MM-DIRECT root directory.
 
-Verbose build
--------------
+### 4.1. Enabling instant recovery
 
-Redis will build with a user friendly colorized output by default.
-If you want to see a more verbose output use the following:
+The instant recovery can be enabled setting the instant recovery state field to ”ON” value.
+The default value of that field is ”ON”, i.e., MM-DIRECT runs instant recovery by default.
 
-    % make V=1
+```bash
+instant_recovery_state = "ON"
+```
 
-Running Redis
--------------
+If the value of instant recovery state is ”OFF”, the system will run the default
+recovery of Redis, i.e., it will run a sequential log recovery. In this case, transactions can
+be performed only after the recovery process is completed.
 
-To run Redis with the default configuration just type:
+### 4.2. Enabling synchronous indexing
 
-    % cd src
-    % ./redis-server
+The instant recovery technique uses a indexed log. For performance reasons, the inser-
+tions in the indexed log are asynchronous to transaction commit, i.e., a transaction should
 
-If you want to provide your redis.conf, you have to run it using an additional
-parameter (the path of the configuration file):
+not wait for insertions on the indexed log to commit. However, the indexing can be syn-
+chronous, i.e., each transaction update must wait the log insertions to confirm its writes.
 
-    % cd src
-    % ./redis-server /path/to/redis.conf
+To enable the synchronous indexing, set the instant recovery synchronous field to ”ON”
+value. The default value of that field is ”OFF”.
 
-It is possible to alter the Redis configuration by passing parameters directly
-as options using the command line. Examples:
+```bash
+instant_recovery_synchronous = "ON";
+```
 
-    % ./redis-server --port 9999 --replicaof 127.0.0.1 6379
-    % ./redis-server /etc/redis/6379.conf --loglevel debug
+### 4.3. Changing the indexed log file data structure
 
-All the options in redis.conf are also supported as options using the command
-line, with exactly the same name.
+MM-DIRECT use a B+-tree as indexed log file by default, but it can use a Hash table too. The
+indexedlog structure field enables to change the indexed log data structure. The default
+value of that field is ”BTREE”.
 
-Playing with Redis
-------------------
+```bash
+indexedlog_structure = "BTREE"; //BTREE | HASH.
+```
 
-You can use redis-cli to play with Redis. Start a redis-server instance,
-then in another terminal try the following:
+### 5. Benchmarking
 
-    % cd src
-    % ./redis-cli
-    redis> ping
-    PONG
-    redis> set foo bar
-    OK
-    redis> get foo
-    "bar"
-    redis> incr mycounter
-    (integer) 1
-    redis> incr mycounter
-    (integer) 2
-    redis>
+MM-DIRECT can use Memtier benckmark to simile workloads. Memtier is a high-throughput
+benchmarking tool for Redis developed by Redis Labs. This tool has a command-line
+interface that provides a set of customization and reporting features to generate various
+workload patterns. Redis and Memtier are different programs and must be run separately.
+However, MM-DIRECT was implemented to use Memtier automatically.
 
-You can find the list of all the available commands at http://redis.io/commands.
+### 5.1. Installing Memtier Benckmark
 
-Installing Redis
------------------
+The following libraries are required for building Memtier:
+1. libevent 2.0.10 or newer
+2. libpcre 8.x
+3. OpenSSL (unless TLS support is disabled by ./configure –disable-tls)
 
-In order to install Redis binaries into /usr/local/bin just use:
+On Ubuntu/Debian distributions, simply install all Memtier prerequisites as fol-
+lows:
 
-    % make install
+```bash
+sudo apt-get install build-essential autoconf automake libpcre3-dev libevent-dev pkg-config zlib1g-dev libssl-dev
+```
 
-You can use `make PREFIX=/some/other/directory install` if you wish to use a
-different destination.
+Although Memtir and Redis are different programs, we put Memtier inside MM-DIRECT so that the former could be automatically executed by the latter. Thus, to build and
+install Memtier, enter in ”MM-DIRECT/src/memtier_benchmark” directory and run the follow-
+ing commands:
 
-Make install will just install binaries in your system, but will not configure
-init scripts and configuration files in the appropriate place. This is not
-needed if you want just to play a bit with Redis, but if you are installing
-it the proper way for a production system, we have a script doing this
-for Ubuntu and Debian systems:
+```bash
+autoreconf -ivf
+./configure
+make
+sudo make install
+```
 
-    % cd utils
-    % ./install_server.sh
+If some packages were not found during installation (e.g., libssl and zlib1g), try to
+install Memtier prerequisites again or install that packages separately. Access Memtier’s
+git for more information about the tool: https://github.com/RedisLabs/memtier_benchmark.
 
-The script will ask you a few questions and will setup everything you need
-to run Redis properly as a background daemon that will start again on
-system reboots.
+### 5.2. Using Memtier automatically on MM-DIRECT
 
-You'll be able to stop and start Redis using the script named
-`/etc/init.d/redis_<portnumber>`, for instance `/etc/init.d/redis_6379`.
+The usage of Memtier by MM-DIRECT should be set in the redis ir.conf file. Thus, before
+running the MM-DIRECT server, the field memtier benchmark state should be set to ”ON”
+value to start Memtier automatically together with the server. The default value of that
+field is ”OFF”.
 
-Code contributions
------------------
+```bash
+memtier_benchmark_state = "ON";
+```
 
-Note: by contributing code to the Redis project in any form, including sending
-a pull request via Github, a code fragment or patch via private email or
-public discussion groups, you agree to release your code under the terms
-of the BSD license that you can find in the [COPYING][1] file included in the Redis
-source distribution.
+A Memtier workload is configured using some parameters in the
+**memtier_benchmark_parameters** field. Below are two examples of workload pa-
+rameters:
 
-Please see the [CONTRIBUTING][2] file in this source distribution for more
-information.
+**Example 1**: creates a workload that generates a database containing 5,000 tuples.
 
-[1]: https://github.com/antirez/redis/blob/unstable/COPYING
-[2]: https://github.com/antirez/redis/blob/unstable/CONTRIBUTING
+```bash
+memtier_benchmark_parameters = " --hide-histogram -n 5000 --key-prefix=´redisIR-´ --key-minimum=1 --key-maximum=5000 --command=´set__key__ __data__´ --command-ratio=5000 --command-key-pattern=S"
+```
 
-Redis internals
-===
+These parameters generate 5,000 command requests per client. Fifty clients are handled
+per each thread by default. Four threads are handled by default. The prefix of the key
+name is defined as ’redisIR-’. The key name suffix is on range 1-5000. A key example:
+redisIR-1999. The operations are SET commands. The parameter ” key ” generates
+keys using the defined range. The parameter ” data ” generates values by Memtier
+default object options. The key generation pattern is sequential (S).
 
-If you are reading this README you are likely in front of a Github page
-or you just untarred the Redis distribution tar ball. In both the cases
-you are basically one step away from the source code, so here we explain
-the Redis source code layout, what is in each file as a general idea, the
-most important functions and structures inside the Redis server and so forth.
-We keep all the discussion at a high level without digging into the details
-since this document would be huge otherwise and our code base changes
-continuously, but a general idea should be a good starting point to
-understand more. Moreover most of the code is heavily commented and easy
-to follow.
+**Example 2**: simulates a OLTP workload for the database generated in the Exam-
+ple 1 (above).
 
-Source code layout
----
+```bash
+memtier_benchmark_parameters = " --hide-histogram -n 5000 --ratio 5:5
+--randomize --key-prefix=´redisIR-´ --key-minimum=1 --key-maximum
+=1000"
+```
 
-The Redis root directory just contains this README, the Makefile which
-calls the real Makefile inside the `src` directory and an example
-configuration for Redis and Sentinel. You can find a few shell
-scripts that are used in order to execute the Redis, Redis Cluster and
-Redis Sentinel unit tests, which are implemented inside the `tests`
+These parameters generate 5,000 random commands per client in a ratio 5:5 between SET
+and GET commands. The prefix of the key name is changed to ’redisIR-’. The key name
+suffix is on range 1-1000.
+
+There are other examples of workload parameters in redis ir.conf file. To see all
+Memtier setting options, run the following command on Memtier root directory:
+
+```bash
+./memtier_benchmark --help
+```
+
+### 6. Simulating databases
+
+MM-DIRECT implements persistence only by its log files. MM-DIRECT creates a sequential log
+file, called **sequentialLog.aof**, and an indexed log file, called **indexedLog.db**. Both files
+are generated together during transaction processing and stored in the **MM-Direct/src/logs**
 directory.
 
-Inside the root are the following important directories:
+### 6.1. Creating a database using Memtier
 
-* `src`: contains the Redis implementation, written in C.
-* `tests`: contains the unit tests, implemented in Tcl.
-* `deps`: contains libraries Redis uses. Everything needed to compile Redis is inside this directory; your system just needs to provide `libc`, a POSIX compatible interface and a C compiler. Notably `deps` contains a copy of `jemalloc`, which is the default allocator of Redis under Linux. Note that under `deps` there are also things which started with the Redis project, but for which the main repository is not `antirez/redis`. An exception to this rule is `deps/geohash-int` which is the low level geocoding library used by Redis: it originated from a different project, but at this point it diverged so much that it is developed as a separated entity directly inside the Redis repository.
+Memtier can be used to simulate workloads to generate databases. Below is a example
+of workload parameters that create 5,000 database tuples and 20,000,000 log records.
+After the workload parameter is set, the database system should be started (see Section
+3.1). Besides, Memtier should be enabled to run automatically together the system (see
+Section 5.2).
 
-There are a few more directories but they are not very important for our goals
-here. We'll focus mostly on `src`, where the Redis implementation is contained,
-exploring what there is inside each file. The order in which files are
-exposed is the logical one to follow in order to disclose different layers
-of complexity incrementally.
+```bash
+memtier_benchmark_parameters = " --hide-histogram -n 5000 --key-
+prefix=’redisIR-’ --key-minimum=1 --key-maximum=5000 --command=’set
 
-Note: lately Redis was refactored quite a bit. Function names and file
-names have been changed, so you may find that this documentation reflects the
-`unstable` branch more closely. For instance in Redis 3.0 the `server.c`
-and `server.h` files were named `redis.c` and `redis.h`. However the overall
-structure is the same. Keep in mind that all the new developments and pull
-requests should be performed against the `unstable` branch.
+__key__ __data__’ --command-ratio=5000 --command-key-pattern=S"
+```
 
-server.h
----
+The above workload should be executed some times to generate log files large
+enough to better observe the instant recovery process. The same workload can be run
+a given number of times by setting the memtier benchmark workload run times field.
+The default value of that field is 1.
 
-The simplest way to understand how a program works is to understand the
-data structures it uses. So we'll start from the main header file of
-Redis, which is `server.h`.
+```bash
+memtier_benchmark_workload_run_times = 10
+```
 
-All the server configuration and in general all the shared state is
-defined in a global structure called `server`, of type `struct redisServer`.
-A few important fields in this structure are:
+The indexed log tends to grow a lot over time. Thus, it is recommended that the
+indexed log checkpoint be enabled for faster recovery. The checkpoint can be activated
+through the configuration parameter below:
 
-* `server.db` is an array of Redis databases, where data is stored.
-* `server.commands` is the command table.
-* `server.clients` is a linked list of clients connected to the server.
-* `server.master` is a special client, the master, if the instance is a replica.
 
-There are tons of other fields. Most fields are commented directly inside
-the structure definition.
+```bash
+checkpoint_state = "ON"
+```
 
-Another important Redis data structure is the one defining a client.
-In the past it was called `redisClient`, now just `client`. The structure
-has many fields, here we'll just show the main ones:
+### 6.2. Changing the name of the log files used by MM-DIRECT
 
-    struct client {
-        int fd;
-        sds querybuf;
-        int argc;
-        robj **argv;
-        redisDb *db;
-        int flags;
-        list *reply;
-        char buf[PROTO_REPLY_CHUNK_BYTES];
-        ... many other fields ...
-    }
+Optionally, log file names can be renamed.
 
-The client structure defines a *connected client*:
+To change the sequential log file name, set the aof filename field.
+    
+```bash
+aof_filename = "logs/sequentialLog.aof";
+```
 
-* The `fd` field is the client socket file descriptor.
-* `argc` and `argv` are populated with the command the client is executing, so that functions implementing a given Redis command can read the arguments.
-* `querybuf` accumulates the requests from the client, which are parsed by the Redis server according to the Redis protocol and executed by calling the implementations of the commands the client is executing.
-* `reply` and `buf` are dynamic and static buffers that accumulate the replies the server sends to the client. These buffers are incrementally written to the socket as soon as the file descriptor is writable.
+To change the indexed log file name, set the indexedlog filename field.
 
-As you can see in the client structure above, arguments in a command
-are described as `robj` structures. The following is the full `robj`
-structure, which defines a *Redis object*:
+```bash
+indexedlog_filename = "logs/indexedLog.db";
+```
 
-    typedef struct redisObject {
-        unsigned type:4;
-        unsigned encoding:4;
-        unsigned lru:LRU_BITS; /* lru time (relative to server.lruclock) */
-        int refcount;
-        void *ptr;
-    } robj;
+### 6.3. Backing up the database
 
-Basically this structure can represent all the basic Redis data types like
-strings, lists, sets, sorted sets and so forth. The interesting thing is that
-it has a `type` field, so that it is possible to know what type a given
-object has, and a `refcount`, so that the same object can be referenced
-in multiple places without allocating it multiple times. Finally the `ptr`
-field points to the actual representation of the object, which might vary
-even for the same type, depending on the `encoding` used.
+It is possible to back up a database storing the sequential and indexed log files in another
+device. Besides, there is a file, called ”**finalLogSeek.da**t”, responsible to synchronizes the
+log insertions from the sequential log to the indexed log. Thus, this file should be stored
+together the log files.
 
-Redis objects are used extensively in the Redis internals, however in order
-to avoid the overhead of indirect accesses, recently in many places
-we just use plain dynamic strings not wrapped inside a Redis object.
+### 7. Simulating workloads
 
-server.c
----
+Memtier can simulate workload patterns. For instance, it is possible to accesses only a
+subset of a database through multiple clients to simulate a OLTP workload.
 
-This is the entry point of the Redis server, where the `main()` function
-is defined. The following are the most important steps in order to startup
-the Redis server.
+### 7.1. Creating OLTP workloads using Memtier
 
-* `initServerConfig()` setups the default values of the `server` structure.
-* `initServer()` allocates the data structures needed to operate, setup the listening socket, and so forth.
-* `aeMain()` starts the event loop which listens for new connections.
+The parameter bellow generates a workload that accesses 20% of the database created in
+the Section 6.1 example.
 
-There are two special functions called periodically by the event loop:
+```bash
+memtier_benchmark_parameters = " --hide-histogram -n 5000 --ratio 5:5
+--randomize --key-prefix=’redisIR-’ --key-minimum=1 --key-maximum
+=1000"
+```
 
-1. `serverCron()` is called periodically (according to `server.hz` frequency), and performs tasks that must be performed from time to time, like checking for timedout clients.
-2. `beforeSleep()` is called every time the event loop fired, Redis served a few requests, and is returning back into the event loop.
+### 8. Simulating system failures
 
-Inside server.c you can find code that handles other vital things of the Redis server:
+MM-DIRECT has some settings to simulate system failures. A system failure is simulated by
+a system shutdown and then a system restart. Failure simulations can be triggered with or
+without a workload execution. Section 7 shows how to simulate workloads using Memtier
+benchmark.
 
-* `call()` is used in order to call a given command in the context of a given client.
-* `activeExpireCycle()` handles eviciton of keys with a time to live set via the `EXPIRE` command.
-* `freeMemoryIfNeeded()` is called when a new write command should be performed but Redis is out of memory according to the `maxmemory` directive.
-* The global variable `redisCommandTable` defines all the Redis commands, specifying the name of the command, the function implementing the command, the number of arguments required, and other properties of each command.
+### 8.1. Triggering system failures
 
-networking.c
----
+It is possible to simulate system failures by the number restarts after time field. This
+field allows to program a given number of failure simulations. If the field value is zero,
+no failure is done. The field’s default value is 0 (zero).
 
-This file defines all the I/O functions with clients, masters and replicas
-(which in Redis are just special clients):
+```bash
+number_restarts_after_time = 4;
+```
 
-* `createClient()` allocates and initializes a new client.
-* the `addReply*()` family of functions are used by commands implementations in order to append data to the client structure, that will be transmitted to the client as a reply for a given command executed.
-* `writeToClient()` transmits the data pending in the output buffers to the client and is called by the *writable event handler* `sendReplyToClient()`.
-* `readQueryFromClient()` is the *readable event handler* and accumulates data from read from the client into the query buffer.
-* `processInputBuffer()` is the entry point in order to parse the client query buffer according to the Redis protocol. Once commands are ready to be processed, it calls `processCommand()` which is defined inside `server.c` in order to actually execute the command.
-* `freeClient()` deallocates, disconnects and removes a client.
+The restart after time field represents the time (in seconds) to simulate a failure
+from the system startup. If the field value is 0 (zero), no failure is done. The default value
+is 600 seconds.
 
-aof.c and rdb.c
----
+```bash
+restart_after_time = 1200;
+```
 
-As you can guess from the names these files implement the RDB and AOF
-persistence for Redis. Redis uses a persistence model based on the `fork()`
-system call in order to create a thread with the same (shared) memory
-content of the main Redis thread. This secondary thread dumps the content
-of the memory on disk. This is used by `rdb.c` to create the snapshots
-on disk and by `aof.c` in order to perform the AOF rewrite when the
-append only file gets too big.
+### 8.2. Triggering failures during normal DBMS processing
+It is also possible to simulate a failure during normal database processing. In this case,
+first the database is loaded entirely into memory and only then the system is available
+for new transactions. Only after that, a failure is done after a given time. To do this,
+the preload database and restart field should be set with the database failure time (in
+seconds). If that field value is 0 (zero), nothing is done, i.e., the system will not be
+preloaded or restarted.
 
-The implementation inside `aof.c` has additional functions in order to
-implement an API that allows commands to append new commands into the AOF
-file as clients execute them.
+```bash
+preload_database_and_restart = 300
+```
 
-The `call()` function defined inside `server.c` is responsible to call
-the functions that in turn will write the commands into the AOF.
+### 8.3. Triggering sucessive failures
 
-db.c
----
+Successive failures can be simulated after the database system is preloaded using the field
+named number restarts after preloading. This field is the number of system failures to
+be simulated. The default value of that field is 1. If that field has the value 0 (zero), no
+failure is preformed, i.e., the system is only preloaded. The time of the successive failures
+is set by restart time after first restart field. The time of the first failure is set by the
+preload database and restart field. The default value of restart time after first restart
+field is the same value of preload database and restart field.
 
-Certain Redis commands operate on specific data types, others are general.
-Examples of generic commands are `DEL` and `EXPIRE`. They operate on keys
-and not on their values specifically. All those generic commands are
-defined inside `db.c`.
+```bash
+number_restarts_after_preloading = 5
+2 restart_time_after_first_restart = 6000
+```
 
-Moreover `db.c` implements an API in order to perform certain operations
-on the Redis dataset without directly accessing the internal data structures.
+Optionally, successive failures can be performed using the num-
+ber restarts after time field, described in Section 8.1. However, the system will
+not be preloaded in memory and the time taken for successive failures will necessarily be
+the same as for the first failure.
 
-The most important functions inside `db.c` which are used in many commands
-implementations are the following:
+### 9. Reporting recovery
 
-* `lookupKeyRead()` and `lookupKeyWrite()` are used in order to get a pointer to the value associated to a given key, or `NULL` if the key does not exist.
-* `dbAdd()` and its higher level counterpart `setKey()` create a new key in a Redis database.
-* `dbDelete()` removes a key and its associated value.
-* `emptyDb()` removes an entire single database or all the databases defined.
+MM-DIRECT is able to produce simple reports with information about the system recovery,
+such as: recovery time, workload execution time, number of operations performed, CPU
+and memory usages, and others. In addition, features of each client operation performed
+on the database can be stored in CSV files. The reports may be enabled in redis ir.conf
+file before the system starts.
 
-The rest of the file implements the generic commands exposed to the client.
+### 9.1. Generating recovery report
 
-object.c
----
+The recovery report shows information about the recovery process, such as: re-
+covery time, total workload execution time, number of tuples recovered incremen-
+tally and on demand, among others. The recovery report is enabled by setting the
+generate recovery report field to ”ON”. Thus, a text file is stored in the redis-
+IR/src/recovery report directory.
 
-The `robj` structure defining Redis objects was already described. Inside
-`object.c` there are all the functions that operate with Redis objects at
-a basic level, like functions to allocate new objects, handle the reference
-counting and so forth. Notable functions inside this file:
+```bash
+generate_recovery_report = "ON"
+```
 
-* `incrRefcount()` and `decrRefCount()` are used in order to increment or decrement an object reference count. When it drops to 0 the object is finally freed.
-* `createObject()` allocates a new object. There are also specialized functions to allocate string objects having a specific content, like `createStringObjectFromLongLong()` and similar functions.
+Additionally, the name of the recovery report file can be modified by the recov-
+ery report filename field.
 
-This file also implements the `OBJECT` command.
+```bash
+recovery_report_filename = "recovery_report/recovery_report.txt";
+```
 
-replication.c
----
+### 9.2. Generating report about executed database operations
 
-This is one of the most complex files inside Redis, it is recommended to
-approach it only after getting a bit familiar with the rest of the code base.
-In this file there is the implementation of both the master and replica role
-of Redis.
+It is possible to generate a CSV file containing information about performed database
+operations. The CSV file contains the fields: key of the tuple updated, command of
+the operation, start time of the operation, finish time of the operation, and type of the
+operation. The first file line contains the database startup time. Besides, the file can con-
+tain information about Memtier workload execution, checkpoints performed, and failures
+simulated (shutdowns). The CSV file of executed command features can be generated by
+setting the generate executed commands csv field to ”ON” value. Thus, a CSV file is
+stored in the MM-DIRECT/src/datasets directory.
 
-One of the most important functions inside this file is `replicationFeedSlaves()` that writes commands to the clients representing replica instances connected
-to our master, so that the replicas can get the writes performed by the clients:
-this way their data set will remain synchronized with the one in the master.
+```bash
+generate_executed_commands_csv = "ON"
+```
 
-This file also implements both the `SYNC` and `PSYNC` commands that are
-used in order to perform the first synchronization between masters and
-replicas, or to continue the replication after a disconnection.
+Additionally, the name of the CSV file can be modified by the exe-
+cuted commands csv filename field.
 
-Other C files
----
+```bash
+executed_commands_csv_filename = "datasets/dataset.csv";
+```
 
-* `t_hash.c`, `t_list.c`, `t_set.c`, `t_string.c` and `t_zset.c` contains the implementation of the Redis data types. They implement both an API to access a given data type, and the client commands implementations for these data types.
-* `ae.c` implements the Redis event loop, it's a self contained library which is simple to read and understand.
-* `sds.c` is the Redis string library, check http://github.com/antirez/sds for more information.
-* `anet.c` is a library to use POSIX networking in a simpler way compared to the raw interface exposed by the kernel.
-* `dict.c` is an implementation of a non-blocking hash table which rehashes incrementally.
-* `scripting.c` implements Lua scripting. It is completely self contained from the rest of the Redis implementation and is simple enough to understand if you are familar with the Lua API.
-* `cluster.c` implements the Redis Cluster. Probably a good read only after being very familiar with the rest of the Redis code base. If you want to read `cluster.c` make sure to read the [Redis Cluster specification][3].
+It is important to note that at each system startup the report files are overwritten.
+Thus, it is necessary to set the field overwrite report files to ”OFF” if experiments with
+system failures are performed.
 
-[3]: http://redis.io/topics/cluster-spec
+```bash
+overwrite_report_files = "OFF"
+```
 
-Anatomy of a Redis command
----
+### 9.3. Generating report about log files’ write bandwidth
 
-All the Redis commands are defined in the following way:
+The sequential log write operation is potentially faster than the indexed log write opera-
+tion. However, MM-DIRECT implements a buffer mechanism in the indexed log to mitigate
 
-    void foobarCommand(client *c) {
-        printf("%s",c->argv[1]->ptr); /* Do something with the argument. */
-        addReply(c,shared.ok); /* Reply something to the client. */
-    }
+the problem of a potential low write bandwidth. It is possible to generate a graph to
+measure and compare write bandwidth in the sequential log file and in the indexed log
+file. To do that, a CSV file containing indexed log writes can be generated by setting
+generate indexing report csv field to ”ON”.
 
-The command is then referenced inside `server.c` in the command table:
+```bash
+generate_indexing_report_csv = "ON"
+```
 
-    {"foobar",foobarCommand,2,"rtF",0,NULL,0,0,0,0,0},
+Additionally, the name of the CSV file can be modified by the index-
+ing report csv filename field.
 
-In the above example `2` is the number of arguments the command takes,
-while `"rtF"` are the command flags, as documented in the command table
-top comment inside `server.c`.
+```bash	
+executed_commands_csv_filename = "indexing_report/indexing.csv";
+```
 
-After the command operates in some way, it returns a reply to the client,
-usually using `addReply()` or a similar function defined inside `networking.c`.
+### 9.4. Generating report about system usage
 
-There are tons of commands implementations inside the Redis source code
-that can serve as examples of actual commands implementations. To write
-a few toy commands can be a good exercise to familiarize with the code base.
+It is possible to generate information about the system CPU (in percentage) and RAM (in
+kilobytes) usages. To do that, the system usage state field must be set to ”ON”.
 
-There are also many other files not described here, but it is useless to
-cover everything. We want to just help you with the first steps.
-Eventually you'll find your way inside the Redis code base :-)
+```bash
+generate_system_usage = "ON"
+```
 
-Enjoy!
+Additionally, the name of the CSV file can be modified by the sys-
+tem usage csv filename field.
+
+```bash
+system_usage_csv_filename = "system_usage/system_usage.csv";
+```
+
+### 9.5. Generating graphics
+
+There are some python scripts (in MM-DIRECT/src/graphics directory) to generate some graph-
+ics by a generated CSV file. For instance, the file called throughput generates a trans-
+action throughput graph using the CSV file generated in Section 9.2. Figure 1 shows the
+transaction throughput during two recovery experiments.
+
+Other graphics about other aspects of the MM-DIRECT recovery strategy can be gen-
+erated, such as: latency, log file write bandwidth, and system usage. Figure 4 shows some
+graphics that can be generated using the available scripts in MM-DIRECT.
+
+<div style="text-align:center; margin-top: 20px; margin-bottom: 20px;">
+<img style="width: 80vw; height: auto;" src="assets/graph-4.jpg" />
+</div>
+
+**Figure 4. Redis-IR graphics: (a) average latency, (b) latency, (c) log files’ write
+bandwidth, (d) CPU usage, (e) latency dispersion, and (f) throughput in successive failures.**
+### 10. Start Now!
+
+This section orders the basic steps to perform a recovery experiment using a database
+backed up. The section shows how to install MM-DIRECT, generate a database, and, finally,
+perform a experiment.
+
+1. Install MM-DIRECT following the instructions in Section 2.
+2. Install Memtier benchmark following the instructions in Section 5.1.
+3. First, before performing an experiment, a database should be simulated. Configure
+Memtier to run automatically on MM-DIRECT following instructions in Section 5.2.
+Then, generate a database (Section 6.1) and back up it (Section 6.3). After the
+database generation, shut down the system (see Section 3.3). This step should be
+performed only once because the backup can be used in several experiments.
+4. Configure a workload to be executed during the experiment. The Section 7.1
+shows a example of a OLTP workload.
+5. Configure system failures to be simulated during the experiment following the
+instructions in Section 8. This step is optional.
+6. Enable reports by following the instructions in Section 9. This step is optional.
+7. Run the server following the instructions in Section 3.1.
+8. That’s all folks! Now you can observe the system running.
+9. In addition, after running the Memtier workload, i.e., after an experiment execu-
+tion, graphics can be generated (see Section 9.5) if step 5 has been performed.
+
+You can also run an experiment using the Redis default recovery (see Section 4.1)
+in order to compare with the instant recovery experiment.
+
+### 11. Read more information about the Instant Recovery technique
+
+You can find more details about the instant recovery technique implemented by MM-DIRECT
+in the papers below. Besides, the papers have examples of recovery experiments using
+MM-DIRECT.
+
+ Arlino Magalhães. 2021. Main Memory Databases Instant Recovery. In Pro-
+ceedings of the VLDB 2021 PhD Workshop co-located with the 47th International Con-
+ference on Very Large Databases (VLDB 2021), Copenhagen, Denmark, August 16, 2021
+(CEUR Workshop Proceedings), Philip A. Bernstein and Tilmann Rabl (Eds.), Vol. 2971.
+CEUR-WS.org.
+http://ceur-ws.org/Vol-2971/paper10.pdf
+
+ Arlino Magalhães, Angelo Brayner, José Maria Monteiro, and Gustavo Moraes. 2021. Indexed Log File: Towards Main Memory Database Instant Recovery.
+In Proceedings of the 24th International Conference on Extending Database Technol-
+ogy, EDBT 2021, Nicosia, Cyprus, March 23 - 26, 2021, Yannis Velegrakis, Demetris
+Zeinalipour-Yazti, Panos K. Chrysanthis, and Francesco Guerra (Eds.). OpenProceed-
+ings.org, 355–360.
+https://doi.org/10.5441/002/edbt.2021.34
+
+ Arlino Magalhaes, José Maria Monteiro, and Angelo Brayner. 2021.  ́Main Mem-
+ory Database Recovery: A Survey. ACM Comput. Surv. 54, 2 (2021), 46:1–46:36.
+https://doi.org/10.1145/3442197
